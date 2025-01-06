@@ -1,63 +1,26 @@
-# Problem:
-To create a LLM-powered application that takes user queries related to company performance metrics and converts them into a structured JSON format.
+# Q&A Chatbot
 
-# Requirements:
-1. Use llama-3.1-8b-instant model from https://console.groq.com/
+## Project Overview
+This project is focused on creating a Q&A chatbot using LangChain, with the frontend and backend separated. The backend is powered by FastAPI and communicates with the LLM Llama 3.2 to generate answers to user queries. The frontend, developed using Streamlit, makes requests to the backend API to retrieve the answers.
 
-2. The application should be able to extract the following information from user queries:
-    - Entity: The company name mentioned in the query (e.g., Flipkart, Amazon).
-    - Parameter: The performance metric mentioned in the query (e.g., GMV, revenue, profit).
-    - Start Date: The start date of the time period for which the metric is requested.
-    - End Date: The end date of the time period for which the metric is requested.
+## Features
+- **Q&A Functionality**: The chatbot allows users to input questions, and it responds with relevant answers.
+- **Powered by Llama 3.2**: The Llama 3.2 model is integrated to generate responses based on user queries.
+- **FastAPI Backend**: The backend is built with FastAPI, serving API endpoints that the frontend can query to get answers.
+- **Streamlit Frontend**: The frontend is a simple user interface built with Streamlit that communicates with the backend API.
 
-3. If the user query does not explicitly mention the start date and/or end date, assume the following defaults:
-    - Start Date: Today's date minus one year.
-    - End Date: Today's date.
+## Technology Stack
+- **Llama 3.2**: A large language model used to generate responses.
+- **LangChain**: A framework for building language model-based applications.
+- **FastAPI**: A modern web framework for building APIs with Python.
+- **Streamlit**: A framework for building interactive user interfaces for machine learning applications.
 
-4. The extracted information should be converted into a JSON format with the following structure:
+## How it Works
+The backend (FastAPI) handles user queries by processing them through Llama 3.2 to generate relevant answers. The frontend, built with Streamlit, sends HTTP requests to the FastAPI backend to retrieve the answers. The two components work together seamlessly to provide the user with a Q&A chatbot experience.
 
-[
-    {
-        "entity": "Tesla",
-        "parameter": "profit",
-        "startDate": "2024-06-01",
-        "endDate": "2024-08-31"
-    }
-]
+## Installation
 
-5. If the user query mentions multiple companies or requests a comparison, the JSON output should include multiple objects, one for each company mentioned.
-
-[
-    {
-        "entity": "Amazon",
-        "parameter": "profits",
-        "startDate": "2023-01-01",
-        "endDate": "2023-12-31"
-    },
-    {
-        "entity": "Flipkart",
-        "parameter": "profits",
-        "startDate": "2023-01-01",
-        "endDate": "2023-12-31"
-    }
-]
-
-6. The start date and end date should be converted to the ISO 8601 format (YYYY-MM-DD) before including them in the JSON output.
-
-7. Use a combination of LLM calls and Python code to accomplish the task. The LLM can be used to understand the user query and extract relevant information, while Python can be used for data manipulation and JSON conversion.
-
-# Additional Considerations:
-
-- Handle variations in user queries, such as different spellings or abbreviations of company names and metric parameters.
-- Implement error handling for cases where the LLM fails to extract the necessary information from the user query.
-- Consider adding support for additional date formats or relative date ranges (e.g., "last quarter", "previous month").
-
-# Execution Instructions:
-
-Prerequisites:
-1. Python Version: Ensure Python 3.8 or later is installed.
-2. Jupyter Notebook: Install Jupyter Notebook or JupyterLab for running Python scripts interactively.
-
-Next Steps:
-1. To ensure the application runs smoothly, execute all cells in the notebook in the given sequence.
-2. This step-by-step execution will help avoid any errors and ensure proper initialization of dependencies, environment variables, and functions.
+1. Clone this repository: git clone https://github.com/ShubhamSinghCMR/Generative-AI.git
+2. Install the required dependencies using requirements.txt file from source folder: pip install -r requirements.txt
+3. To run the backend server, use the following command: python app.py
+4. To run the frontend client, use the following command: streamlit run client.py

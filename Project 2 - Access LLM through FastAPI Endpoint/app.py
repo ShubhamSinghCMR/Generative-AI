@@ -1,5 +1,5 @@
 from langchain_core.prompts import ChatPromptTemplate
-from langchain_community.llms import Ollama
+from langchain_ollama import OllamaLLM as Ollama
 from langchain_core.output_parsers import StrOutputParser
 from langserve import add_routes
 
@@ -16,7 +16,7 @@ prompt = ChatPromptTemplate.from_messages(
 
 )
 
-llm = Ollama(model="llama2")
+llm = Ollama(model="llama3.2")
 
 output=StrOutputParser()
 

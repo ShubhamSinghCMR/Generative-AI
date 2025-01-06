@@ -58,6 +58,6 @@ Prerequisites:
 1. Python Version: Ensure Python 3.8 or later is installed.
 2. Jupyter Notebook: Install Jupyter Notebook or JupyterLab for running Python scripts interactively.
 
-Next Steps:
+Next Steps: 
 1. To ensure the application runs smoothly, execute all cells in the notebook in the given sequence.
 2. This step-by-step execution will help avoid any errors and ensure proper initialization of dependencies, environment variables, and functions.

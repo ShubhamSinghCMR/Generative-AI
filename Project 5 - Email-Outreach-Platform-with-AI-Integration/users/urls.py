@@ -1,0 +1,45 @@
+from django.urls import path
+
+from .views import (
+    AIGenerateSuggestionsView,
+    CheckAuthenticationView,
+    CreateTemplateView,
+    CSVUploadView,
+    CSVValidationView,
+    EmailStatusView,
+    HomeView,
+    LoginView,
+    LogoutView,
+    RegisterView,
+    SendEmailPageView,
+    SendEmailView,
+    SigninPageView,
+    SignupPageView,
+    TemplateEditorView,
+    UserTemplatesView,
+    WelcomePageView,
+)
+
+urlpatterns = [
+    path("", WelcomePageView.as_view(), name="welcome-page"),
+    path("signup/", SignupPageView.as_view(), name="signup-page"),
+    path("register/", RegisterView.as_view(), name="register"),
+    path("signin/", SigninPageView.as_view(), name="signin-page"),
+    path("login/", LoginView.as_view(), name="login"),
+    path("logout/", LogoutView.as_view(), name="logout"),
+    path("home/", HomeView.as_view(), name="home"),
+    path("csv-validation/", CSVValidationView.as_view(), name="csv_validation"),
+    path("upload-csv/", CSVUploadView.as_view(), name="upload-csv"),
+    path("create-template/", CreateTemplateView.as_view(), name="create-template"),
+    path("template/", TemplateEditorView.as_view(), name="template-editor"),
+    path("send-email/", SendEmailView.as_view(), name="send-email"),
+    path("ai-suggestions/", AIGenerateSuggestionsView.as_view(), name="ai-suggestions"),
+    path(
+        "check-authentication/",
+        CheckAuthenticationView.as_view(),
+        name="check-authentication",
+    ),
+    path("send-email-page/", SendEmailPageView.as_view(), name="send-email-page"),
+    path("get-user-templates/", UserTemplatesView.as_view(), name="get-user-templates"),
+    path("email-status/", EmailStatusView.as_view(), name="email-status"),
+]

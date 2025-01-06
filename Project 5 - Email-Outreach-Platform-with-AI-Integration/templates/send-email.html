@@ -1,0 +1,429 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Send Email</title>
+    {% include 'header.html' %}
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/css/bootstrap.min.css" rel="stylesheet">
+        <style>
+            .carousel-control-prev-icon,
+            .carousel-control-next-icon {
+                background-color: black; 
+            }
+            .carousel-inner .carousel-item {
+            width: 70%; 
+            margin-left: 150px;
+            margin-bottom: 100px;
+        }
+        </style>
+        
+    <script>
+        // Redirect to login if not authenticated, before page loads
+        window.onload = function() {
+            fetch('/api/users/check-authentication/', {
+                method: 'GET',
+                credentials: 'same-origin'  
+            })
+            .then(response => {
+                if (!response.ok) {
+                    alert("Please log in first.");
+                    window.location.href = "/";  // Redirect to login page
+                }
+            })
+            .catch(error => {
+                console.error("Error checking authentication:", error);
+                alert("An error occurred. Please log in.");
+                window.location.href = "/";  // Redirect to login page
+            });
+        };
+
+        // Get CSRF token from the form
+        function getCsrfToken() {
+            const csrfToken = document.querySelector('[name=csrfmiddlewaretoken]').value;
+            return csrfToken;
+        }
+        
+        // Function to send email
+        async function sendEmail() {
+            const subject = document.getElementById("subject").value;
+            const message = document.getElementById("email-content").value;
+            const recipientList = document.getElementById("recipients").value.split(',').map(email => email.trim());
+            const responseMessageDiv = document.getElementById("response-message");
+
+            if (!subject || !message || recipientList.length === 0) {
+                responseMessageDiv.style.display = 'block';
+                responseMessageDiv.innerHTML = ` 
+                    <div class="alert alert-danger">
+                        Subject, message, and recipient list are required.
+                    </div>
+                `;
+                return;
+            }
+
+            // Get CSRF token from the form
+            const csrfToken = getCsrfToken();
+
+            try {
+                const response = await fetch("/api/users/send-email/", {
+                    method: "POST",
+                    headers: {
+                        "Content-Type": "application/json",
+                        "X-CSRFToken": csrfToken, 
+                    },
+                    body: JSON.stringify({
+                        subject: subject,
+                        message: message,
+                        recipient_list: recipientList
+                    }),
+                    credentials: "same-origin"  // Ensure cookies (for session auth) are included
+                });
+
+                // Check if the response is a JSON response
+                const contentType = response.headers.get("Content-Type");
+                if (!contentType || !contentType.includes("application/json")) {
+                    const responseText = await response.text();  
+                    console.error("Non-JSON response received:", responseText);  
+                    throw new Error("Received non-JSON response from the server");
+                }
+
+
+                const data = await response.json();
+
+                responseMessageDiv.style.display = 'block';
+                if (response.ok) {
+                    responseMessageDiv.innerHTML = ` 
+                        <div class="alert alert-success">
+                        Sent to: ${data.sent_to.join(', ')}<br>
+                        Not Sent to: ${data.not_sent_to.join(', ')}</div>
+                    `;
+                } else {
+                    responseMessageDiv.innerHTML = ` 
+                        <div class="alert alert-danger">
+                            Error: ${data.error || 'Failed to send emails.'}
+                        </div>
+                    `;
+                }
+            } catch (error) {
+                console.error("Error during fetch:", error);
+                responseMessageDiv.style.display = 'block';
+                responseMessageDiv.innerHTML = ` 
+                    <div class="alert alert-danger">
+                        An error occurred: ${error.message}
+                    </div>
+                `;
+            }
+        }
+        // Function to generate email content using AI
+async function generateEmailContent() {
+    const aiInput = document.getElementById("ai-input").value;
+    const responseMessageDiv = document.getElementById("response-message");
+
+    if (!aiInput) {
+        responseMessageDiv.style.display = 'block';
+        responseMessageDiv.innerHTML = `
+            <div class="alert alert-danger">
+                Input is required for generating email content.
+            </div>
+        `;
+        return;
+    }
+
+    // Get CSRF token from the form
+    const csrfToken = getCsrfToken();
+
+    try {
+        const response = await fetch("/api/users/ai-suggestions/", {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json",
+                "X-CSRFToken": csrfToken,  
+            },
+            body: JSON.stringify({ description: aiInput }),
+            credentials: "same-origin"  // Ensure cookies (for session auth) are included
+        });
+
+        // Check if the response is a JSON response
+        const contentType = response.headers.get("Content-Type");
+        if (!contentType || !contentType.includes("application/json")) {
+            const responseText = await response.text();
+            console.error("Non-JSON response received:", responseText);  
+            throw new Error("Received non-JSON response from the server");
+        }
+
+        const data = await response.json();
+
+        if (response.ok) {
+            // Update the subject and email content fields with the AI-generated suggestions
+            document.getElementById("subject").value = data.subject.replace(/^['"]|['"]$/g, '');
+            document.getElementById("email-content").value = data.body;
+
+            responseMessageDiv.style.display = 'block';
+            responseMessageDiv.innerHTML = `
+                <div class="alert alert-success">
+                    Email content generated successfully.
+                </div>
+            `;
+        } else {
+            responseMessageDiv.style.display = 'block';
+            responseMessageDiv.innerHTML = `
+                <div class="alert alert-danger">
+                    Error: ${data.error || 'Failed to generate content.'}
+                </div>
+            `;
+        }
+    } catch (error) {
+        console.error("Error during fetch:", error);
+        responseMessageDiv.style.display = 'block';
+        responseMessageDiv.innerHTML = `
+            <div class="alert alert-danger">
+                An error occurred: ${error.message}
+            </div>
+        `;
+    }
+}
+ // Function to reset the form
+ function resetForm() {
+        document.getElementById("email-form").reset();
+        document.getElementById("ai-input").value = '';
+        document.getElementById("response-message").style.display = 'none';
+    }
+
+    async function uploadAndProcessCSV() {
+    const csvInput = document.createElement('input');
+    csvInput.type = 'file';
+    csvInput.accept = '.csv';
+
+    csvInput.onchange = async function (event) {
+        const file = event.target.files[0];
+        if (!file) {
+            alert("No file selected.");
+            return;
+        }
+
+        const formData = new FormData();
+        formData.append('file', file);
+
+        try {
+            // Call the CSVValidationView
+            const csrfToken = getCsrfToken();
+            const response = await fetch("/api/users/csv-validation/", {
+                method: "POST",
+                headers: {
+                    "X-CSRFToken": csrfToken,
+                },
+                body: formData,
+                credentials: "same-origin",
+            });
+
+            const data = await response.json();
+
+            if (response.ok) {
+                // Prepare the template
+                const template = document.getElementById("email-content").value;
+                const subject = document.getElementById("subject").value;
+
+                if (!template || !subject) {
+                    alert("Subject and email content are required.");
+                    return;
+                }
+
+                let sentEmails = [];
+                let notSentEmails = [];
+
+                // Send emails for each row in the CSV
+                const emails = data.data.map(async (row) => {
+                    let personalizedMessage = template;
+                    for (const key in row) {
+                        personalizedMessage = personalizedMessage.replace(`{${key}}`, row[key]);
+                    }
+
+                    const emailResponse = await fetch("/api/users/send-email/", {
+                        method: "POST",
+                        headers: {
+                            "Content-Type": "application/json",
+                            "X-CSRFToken": csrfToken,
+                        },
+                        body: JSON.stringify({
+                            subject: subject,
+                            message: personalizedMessage,
+                            recipient_list: [row.email],
+                        }),
+                        credentials: "same-origin",
+                    });
+
+                    const emailData = await emailResponse.json();
+
+                    if (emailData.sent_to && emailData.sent_to.length > 0) {
+                        sentEmails = sentEmails.concat(emailData.sent_to);
+                    }
+
+                    if (emailData.not_sent_to && emailData.not_sent_to.length > 0) {
+                        notSentEmails = notSentEmails.concat(emailData.not_sent_to);
+                    }
+
+                    return emailData;
+                });
+
+                await Promise.all(emails);
+
+                // Show the result of email sending
+                const resultDiv = document.getElementById("response-message");
+                resultDiv.style.display = 'block';
+                resultDiv.innerHTML = `
+                    <div class="alert alert-success">
+                        <strong>Email Sent To:</strong> ${sentEmails.join(', ')}
+                    </div>
+                    <div class="alert alert-danger">
+                        <strong>Email Not Sent To:</strong> ${notSentEmails.join(', ')}
+                    </div>
+                `;
+            } else {
+                alert(`CSV Validation Failed: ${data.error.join(', ')}`);
+            }
+        } catch (error) {
+            console.error("Error:", error);
+            alert("An error occurred during CSV processing.");
+        }
+    };
+
+    csvInput.click();
+}
+
+
+
+    </script>
+
+<script>
+    // Function to fetch and display templates for the current logged-in user
+async function fetchTemplates() {
+    const responseMessageDiv = document.getElementById("response-message");
+
+    try {
+        const csrfToken = getCsrfToken();
+        const response = await fetch("/api/users/get-user-templates/", {
+            method: "GET",
+            headers: {
+                "Content-Type": "application/json",
+                "X-CSRFToken": csrfToken, 
+            },
+            credentials: "same-origin"  // Ensure cookies (for session auth) are included
+        });
+
+        const data = await response.json();
+        if (response.ok) {
+            const carouselContainer = document.getElementById("carousel-templates");
+            carouselContainer.innerHTML = ''; 
+
+            if (data.templates.length > 0) {
+                data.templates.forEach((template, index) => {
+                    const templateItem = document.createElement('div');
+                    templateItem.classList.add('carousel-item');
+                    if (index === 0) templateItem.classList.add('active'); 
+
+                    templateItem.innerHTML = `
+                        <div class="d-block w-100" style="background-color: #f8f9fa; padding: 20px;" onclick="insertTemplateContent('${template.created_template}')">
+                            <h5>Template ${template.id}</h5>
+                            <p>${template.created_template}</p>
+                        </div>
+                    `;
+                    carouselContainer.appendChild(templateItem);
+                });
+            } else {
+                responseMessageDiv.style.display = 'block';
+                responseMessageDiv.innerHTML = `
+                    <div class="alert alert-info">
+                        No templates available.
+                    </div>
+                `;
+            }
+        } else {
+            responseMessageDiv.style.display = 'block';
+            responseMessageDiv.innerHTML = `
+                <div class="alert alert-danger">
+                    Error fetching templates: ${data.error || 'Failed to load templates.'}
+                </div>
+            `;
+        }
+    } catch (error) {
+        console.error("Error during fetch:", error);
+        responseMessageDiv.style.display = 'block';
+        responseMessageDiv.innerHTML = `
+            <div class="alert alert-danger">
+                An error occurred: ${error.message}
+            </div>
+        `;
+    }
+}
+
+// Function to insert template content into the email content field
+function insertTemplateContent(templateBody) {
+    document.getElementById("email-content").value = templateBody;
+}
+
+    // Call the fetchTemplates function when the page loads
+    window.onload = function() {
+        fetchTemplates();
+    };
+    </script>
+    
+</head>
+<body>
+    <div class="container mt-5">
+        <h1 class="text-center">Send Email</h1>
+        <div class="row">
+            <div class="col-md-7">
+                <h3>Email Form</h3>
+                <form id="email-form">
+                    <div class="mb-3">
+                        <label for="recipients" class="form-label">Recipients (Separate by comma)</label>
+                        <input type="text" class="form-control" id="recipients" placeholder="Enter email recipients (comma separated)" required>
+                    </div>
+                    <div class="mb-3">
+                        <label for="subject" class="form-label">Subject</label>
+                        <input type="text" class="form-control" id="subject" placeholder="Enter email subject" required>
+                    </div>
+                    <div class="mb-3">
+                        <label for="email-content" class="form-label">Email Content</label>
+                        <textarea class="form-control" id="email-content" rows="6" placeholder="Enter email content" required></textarea>
+                    </div>
+                    <button type="button" class="btn btn-primary" onclick="sendEmail()">Send Email</button>
+                    <button type="button" class="btn btn-secondary" onclick="resetForm()">Clear</button>
+                    <button type="button" class="btn btn-warning" onclick="uploadAndProcessCSV()">Send Bulk Mail using CSV</button>
+                </form>
+            </div>
+
+            <div class="col-md-5">
+                <h3>Generate Content Using AI</h3>
+                <div class="mb-3">
+                    <label for="ai-input" class="form-label">Enter Input</label>
+                    <textarea class="form-control" id="ai-input" rows="6" placeholder="Enter your input for AI generation" required></textarea>
+                </div>
+                <button type="button" class="btn btn-success" onclick="generateEmailContent()">Generate Using AI</button>
+                <div id="response-message" class="mt-4" style="display:none;"></div>
+            </div>
+        </div>
+
+<div class="mt-5">
+    <h3>Email Templates</h3>
+    <div id="template-carousel" class="carousel slide" data-bs-ride="carousel">
+        <div class="carousel-inner" id="carousel-templates">
+            <!-- Template items will be inserted dynamically -->
+        </div>
+        <button class="carousel-control-prev" type="button" data-bs-target="#template-carousel" data-bs-slide="prev">
+            <span class="carousel-control-prev-icon" aria-hidden="true"></span>
+            <span class="visually-hidden">Previous</span>
+        </button>
+        <button class="carousel-control-next" type="button" data-bs-target="#template-carousel" data-bs-slide="next">
+            <span class="carousel-control-next-icon" aria-hidden="true"></span>
+            <span class="visually-hidden">Next</span>
+        </button>
+    </div>
+</div>
+
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/@popperjs/core@2.11.6/dist/umd/popper.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/js/bootstrap.min.js"></script>
+</body>
+</html>

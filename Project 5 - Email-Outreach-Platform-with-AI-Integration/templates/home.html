@@ -1,0 +1,232 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Home - Email Outreach</title>
+    <!-- Load static files -->
+    {% load static %}
+    {% include 'header.html' %}
+
+    <!-- Bootstrap CSS -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/css/bootstrap.min.css" rel="stylesheet">
+
+    <!-- Chart.js -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+    <script>
+        let successEmails = [];
+        let failedEmails = [];
+        let successPage = 1;
+        let failPage = 1;
+        const emailsPerPage = 4;
+
+        // Redirect to login if not authenticated, before page loads
+        window.onload = function() {
+            fetch('/api/users/check-authentication/')
+                .then(response => {
+                    if (!response.ok) {
+                        alert("Please log in first.");
+                        window.location.href = "/";  // Redirect to index.html
+                    }
+                })
+                .catch(error => {
+                    console.error("Error:", error);
+                    alert("An error occurred. Please try again.");
+                    window.location.href = "/";  // Redirect to index.html
+                });
+
+            // Fetch email status
+            fetch('/api/users/email-status/')  
+                .then(response => response.json())
+                .then(data => {
+                    successEmails = data.successful_emails;
+                    failedEmails = data.failed_emails;
+                    document.getElementById('success-count').textContent = data.success_count;
+                    document.getElementById('fail-count').textContent = data.fail_count;
+                    displayEmails();
+                    displayPieChart(data.success_count, data.fail_count);
+                })
+                .catch(error => {
+                    console.error("Error fetching email status:", error);
+                    alert("An error occurred while fetching the email status.");
+                });
+        };
+
+        function displayEmails() {
+            // Display the paginated list of successful emails
+            const successEmailsList = document.getElementById('success-emails');
+            successEmailsList.innerHTML = '';
+            const successStartIndex = (successPage - 1) * emailsPerPage;
+            const successEndIndex = successStartIndex + emailsPerPage;
+            const successEmailsPage = successEmails.slice(successStartIndex, successEndIndex);
+            successEmailsPage.forEach(email => {
+                const card = document.createElement('div');
+                card.classList.add('card', 'mb-3');
+                card.innerHTML = `
+                    <div class="card-body">
+                        <h5 class="card-title">Recipient: ${email.recipient}</h5>
+                        <p class="card-text">Subject: ${email.subject}</p>
+                        <p class="card-text"><small class="text-muted">Sent on: ${email.email_sent_date}</small></p>
+                        <p class="card-text"><strong>Content:</strong> ${email.message}</p>
+                    </div>
+                `;
+                successEmailsList.appendChild(card);
+            });
+
+            // Display the paginated list of failed emails
+            const failedEmailsList = document.getElementById('failed-emails');
+            failedEmailsList.innerHTML = '';
+            const failStartIndex = (failPage - 1) * emailsPerPage;
+            const failEndIndex = failStartIndex + emailsPerPage;
+            const failedEmailsPage = failedEmails.slice(failStartIndex, failEndIndex);
+            failedEmailsPage.forEach(email => {
+                const card = document.createElement('div');
+                card.classList.add('card', 'mb-3');
+                card.innerHTML = `
+                    <div class="card-body">
+                        <h5 class="card-title">Recipient: ${email.recipient}</h5>
+                        <p class="card-text">Subject: ${email.subject}</p>
+                        <p class="card-text"><small class="text-muted">Sent on: ${email.email_sent_date}</small></p>
+                        <p class="card-text"><strong>Content:</strong> ${email.message}</p>
+                    </div>
+                `;
+                failedEmailsList.appendChild(card);
+            });
+
+            // Update pagination controls
+            document.getElementById('success-prev').style.display = successPage > 1 ? 'inline-block' : 'none';
+            document.getElementById('success-next').style.display = successPage * emailsPerPage < successEmails.length ? 'inline-block' : 'none';
+            document.getElementById('fail-prev').style.display = failPage > 1 ? 'inline-block' : 'none';
+            document.getElementById('fail-next').style.display = failPage * emailsPerPage < failedEmails.length ? 'inline-block' : 'none';
+        }
+
+        // Navigate to previous page
+        function prevPage(type) {
+            if (type === 'success' && successPage > 1) {
+                successPage--;
+            } else if (type === 'fail' && failPage > 1) {
+                failPage--;
+            }
+            displayEmails();
+        }
+
+        // Navigate to next page
+        function nextPage(type) {
+            if (type === 'success' && successPage * emailsPerPage < successEmails.length) {
+                successPage++;
+            } else if (type === 'fail' && failPage * emailsPerPage < failedEmails.length) {
+                failPage++;
+            }
+            displayEmails();
+        }
+
+        // Display Pie Chart for Email Status
+        function displayPieChart(successCount, failCount) {
+            var ctx = document.getElementById('emailStatusChart').getContext('2d');
+            var emailStatusChart = new Chart(ctx, {
+                type: 'pie',
+                data: {
+                    labels: ['Successful Emails', 'Failed Emails'],
+                    datasets: [{
+                        data: [successCount, failCount],
+                        backgroundColor: ['#28a745', '#dc3545'],
+                        borderColor: ['#ffffff', '#ffffff'],
+                        borderWidth: 1
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    plugins: {
+                        legend: {
+                            position: 'top',
+                            labels: {
+                                font: {
+                                    size: 16, 
+                                }
+                            }
+                        },
+                        tooltip: {
+                            callbacks: {
+                                label: function(tooltipItem) {
+                                    return tooltipItem.label + ': ' + tooltipItem.raw;
+                                }
+                            }
+                        }
+                    },
+                    elements: {
+                        arc: {
+                            borderWidth: 0 
+                        }
+                    },
+                    animation: {
+                        animateScale: true, 
+                        animateRotate: true 
+                    }
+                }
+            });
+        }
+    </script>
+
+    <style>
+        #emailStatusChart {
+            width: 400px !important;
+            height: 400px !important;
+            display: block;
+            margin-left: auto;
+            margin-right: auto;
+        }
+
+        .container {
+            margin-top: 30px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container d-flex justify-content-center align-items-center min-vh-100">
+        <div class="text-center">
+            <h1 class="display-4">Welcome to the Email Outreach Platform</h1>
+            <p class="lead">Manage your email campaigns and send emails effectively.</p>
+
+            <!-- Email Status Section -->
+            <div class="container">
+                <div class="text-center mt-4">
+                    <h2>Email Status</h2>
+                    <p><strong>Number of Successful Emails:</strong> <span id="success-count">0</span></p>
+                    <p><strong>Number of Failed Emails:</strong> <span id="fail-count">0</span></p>
+                    
+                    <!-- Pie Chart -->
+                    <canvas id="emailStatusChart"></canvas>
+            
+                    <div class="row">
+                        <!-- Successful Emails Column -->
+                        <div class="col-md-6">
+                            <h3>Successful Emails</h3>
+                            <div id="success-emails"></div>
+                            <div>
+                                <button id="success-prev" class="btn btn-primary" onclick="prevPage('success')">Previous</button>
+                                <button id="success-next" class="btn btn-primary" onclick="nextPage('success')">Next</button>
+                            </div>
+                        </div>
+
+                        <!-- Failed Emails Column -->
+                        <div class="col-md-6">
+                            <h3>Failed Emails</h3>
+                            <div id="failed-emails"></div>
+                            <div>
+                                <button id="fail-prev" class="btn btn-primary" onclick="prevPage('fail')">Previous</button>
+                                <button id="fail-next" class="btn btn-primary" onclick="nextPage('fail')">Next</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+        </div>
+    </div>
+
+    <!-- Bootstrap JS and dependencies -->
+    <script src="https://cdn.jsdelivr.net/npm/@popperjs/core@2.11.6/dist/umd/popper.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/js/bootstrap.min.js"></script>
+</body>
+</html>

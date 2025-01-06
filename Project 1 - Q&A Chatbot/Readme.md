@@ -17,15 +17,6 @@ The chatbot operates by taking user input in the form of questions. It processes
 
 ## Installation
 
-1. Clone this repository:
-   ```
-   git clone https://github.com/ShubhamSinghCMR/Generative-AI.git
-  ```
-2. Install the required dependencies:
-  ```
-  pip install -r requirements.txt
-  ```
-3. Running the Application:
-  ```
-  streamlit run chatbot.py    
-  ```
+1. Clone this repository: git clone https://github.com/ShubhamSinghCMR/Generative-AI.git
+2. Install the required dependencies: pip install -r requirements.txt
+3. Running the Application: streamlit run chatbot.py

@@ -21,34 +21,34 @@ The platform utilizes the Llama3.2 AI model to generate email content. The idea 
 # Setup and Installation instructions (Windows): 
 
 # # 1.	Clone the Repository
-1. Open your browser and visit the repository: https://github.com/ShubhamSinghCMR/email_outreach.git.
+1. Open your browser and visit the repository: https://github.com/ShubhamSinghCMR/Generative-AI.git
 2. Clone it using the following command in your terminal:
 ```
-git clone https://github.com/ShubhamSinghCMR/email_outreach.git
+git clone https://github.com/ShubhamSinghCMR/Generative-AI.git
 ```
 
-# # 2.	Open the Project Folder
-Navigate to the cloned project directory:
-```
-cd email_outreach
-```
-
-# # 3.	Create a Virtual Environment
+# # 2.	Create a Virtual Environment
 Run the following command to create a virtual environment:
 ```
 python -m venv venv
 ```
 
-# # 4.	Activate the Virtual Environment
+# # 3.	Activate the Virtual Environment
 Activate the virtual environment:
 ```
 venv\Scripts\activate
 ```
 
-# # 5.	Install Project Requirements
+# # 4.	Install Project Requirements
 Install the dependencies using:
 ```
 pip install -r requirements.txt
+```
+
+# # 5.	Open the Project Folder
+Navigate to the cloned project directory:
+```
+cd 'Project 5 - Email-Outreach-Platform-with-AI-Integration'
 ```
 
 # # 6.	Install and Configure Redis

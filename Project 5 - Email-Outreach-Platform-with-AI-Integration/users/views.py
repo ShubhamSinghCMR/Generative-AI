@@ -1,12 +1,24 @@
 import logging
+import os
 import re
 import subprocess
+import tempfile
+from io import BytesIO
 
 import pandas as pd
+from django.conf import settings
 from django.contrib.auth import authenticate, get_user_model, login, logout
 from django.core.exceptions import ValidationError
+from django.core.files.base import ContentFile
+from django.core.files.storage import default_storage
 from django.http import JsonResponse
+from django.views import View
 from django.views.generic import TemplateView
+from faster_whisper import WhisperModel
+from reportlab.lib.pagesizes import letter
+from reportlab.lib.styles import getSampleStyleSheet
+from reportlab.pdfgen import canvas
+from reportlab.platypus import Paragraph
 from rest_framework import status
 from rest_framework.parsers import FormParser, MultiPartParser
 from rest_framework.permissions import IsAuthenticated
@@ -18,6 +30,8 @@ from .tasks import send_email_task
 from .validators import validate_password_strength
 
 logger = logging.getLogger(__name__)
+
+model = WhisperModel("base", device="cpu")
 
 
 class WelcomePageView(TemplateView):
@@ -137,7 +151,7 @@ class CSVValidationView(APIView):
             return JsonResponse({"error": "No file uploaded."}, status=400)
 
         try:
-            # Read the CSV file using pandas
+            # Read the CSV file
             df = pd.read_csv(file)
 
             # Define required columns
@@ -159,7 +173,7 @@ class CSVValidationView(APIView):
 
             return JsonResponse(
                 {
-                    "message": "File uploaded and validated successfully.",
+                    "message": "File validated successfully.",
                     "data": df.to_dict(orient="records"),
                 },
                 status=200,
@@ -193,7 +207,7 @@ class TemplateEditorView(APIView):
         try:
             template = request.data.get("template")
 
-            # Check if the user is authenticated (session will automatically be checked)
+            # Check if the user is authenticated
             if not request.user.is_authenticated:
                 return Response(
                     {"error": "User must be authenticated to create a template."},
@@ -228,13 +242,95 @@ class TemplateEditorView(APIView):
             )
 
 
+class TemplateUpdateView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        try:
+            template_id = request.data.get("template_id")
+            updated_template = request.data.get("updated_template")
+
+            # Check if the user is authenticated 
+            if not request.user.is_authenticated:
+                return Response(
+                    {"error": "User must be authenticated to update a template."},
+                    status=status.HTTP_401_UNAUTHORIZED,
+                )
+
+            if not template_id or not updated_template:
+                return Response(
+                    {"error": "Both template_id and updated_template are required."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
+            # Retrieve the template by ID and ensure the user owns it
+            try:
+                template = EmailTemplate.objects.get(
+                    id=template_id, username=request.user
+                )
+            except EmailTemplate.DoesNotExist:
+                return Response(
+                    {
+                        "error": "Template not found or you don't have permission to update it."
+                    },
+                    status=status.HTTP_404_NOT_FOUND,
+                )
+
+            # Update the template content
+            template.created_template = updated_template
+            template.save()
+
+            return Response(
+                {
+                    "message": "Template updated successfully.",
+                    "template": template.created_template,
+                },
+                status=status.HTTP_200_OK,
+            )
+
+        except Exception as e:
+            logger.error(f"Error updating template: {str(e)}")
+            return Response(
+                {"error": f"An error occurred: {str(e)}"},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
+
+
 class SendEmailView(APIView):
     permission_classes = [IsAuthenticated]
+
+    def get_pdf_file_path(self, pdf_file_name):
+        try:
+            file_path = default_storage.path(f"ai_attachments/{pdf_file_name}")
+            if not os.path.exists(file_path):
+                raise FileNotFoundError(f"File {pdf_file_name} not found in storage.")
+            return file_path
+        except Exception as e:
+            print(f"Error retrieving PDF file: {e}")
+            raise e
 
     def post(self, request):
         subject = request.data.get("subject")
         message = request.data.get("message")
         recipient_list = request.data.get("recipient_list")
+
+        # Ensure recipient_list is a list and properly formatted
+        if isinstance(recipient_list, str):
+            recipient_list = (
+                recipient_list.strip("[]").replace('"', "").split(",")
+            )  # If it's a string, clean it
+        elif isinstance(recipient_list, list):
+            recipient_list = [
+                email.strip() for email in recipient_list
+            ]  # Strip any extra spaces in a list
+
+        # Handle the Manual attachments
+        attachments = request.FILES.getlist("attachments")  # Handling multiple files
+
+        # Handle AI attachments (file names or URLs)
+        pdf_attachments = request.data.getlist(
+            "pdf_attachments"
+        ) 
 
         # Validate the input
         if not subject or not message or not recipient_list:
@@ -252,6 +348,7 @@ class SendEmailView(APIView):
 
         # Get the current user
         user = request.user
+        print(f"reipient: {recipient_list}")
 
         # Validate email addresses
         valid_emails = []
@@ -260,7 +357,7 @@ class SendEmailView(APIView):
             try:
                 # Regular expression for simple email validation
                 regex = r"^[a-zA-Z0-9_.+-]+@([a-zAZ0-9-]+\.[a-zA-Z0-9-.]+)$"
-                # Simple email format validation
+               
                 match = re.match(regex, email)
                 if match:
                     domain = match.group(1)
@@ -274,9 +371,39 @@ class SendEmailView(APIView):
                 print("Error: ", e)
                 invalid_emails.append(email)
 
-        # Enqueue the email sending task using Celery
+        print(f"valid emails: {valid_emails}")
+
+        print(f"invalid emails: {invalid_emails}")
+
+        # Prepare the Manual attachment files
+        attachment_files = []
+        for file in attachments:
+            file_path = default_storage.save(
+                f"email_attachments/{file.name}", ContentFile(file.read())
+            )
+            attachment_files.append(file_path)
+
+        print(f"PDF Attachments: {pdf_attachments}")
+        
+        # Handle AI attachments (assuming the front-end sends names or URLs)
+        for pdf_file in pdf_attachments:
+            try:
+                file_path = self.get_pdf_file_path(
+                    pdf_file
+                )  # Fetch the correct file path
+                if os.path.exists(file_path):  # Ensure the file exists
+                    attachment_files.append(file_path)
+                else:
+                    print(f"PDF file not found: {pdf_file}")
+            except Exception as e:
+                print(f"Error retrieving PDF file: {pdf_file}, {e}")
+
+        print(f"Starting Sending email after getting atachment...")
+        print(f"Attachments: {attachment_files}")
+
+        # Enqueue the email sending task
         try:
-            send_email_task.delay(subject, message, valid_emails)
+            send_email_task.delay(subject, message, valid_emails, attachment_files)
             # Log each valid email to EmailTrack model
             for email in valid_emails:
                 EmailTrack.objects.create(
@@ -285,6 +412,7 @@ class SendEmailView(APIView):
                     status="success",
                     subject=subject,
                     message=message,
+                    attachments=[file.name for file in attachments],
                 )
             for email in invalid_emails:
                 EmailTrack.objects.create(
@@ -293,6 +421,7 @@ class SendEmailView(APIView):
                     status="fail",
                     subject=subject,
                     message=message,
+                    attachments=[file.name for file in attachments],
                 )
         except Exception as e:
             print("Error: ", e)
@@ -361,6 +490,230 @@ class AIGenerateSuggestionsView(APIView):
             raise Exception(f"Error running Ollama: {str(e)}")
 
 
+class AIGenerateTemplateView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        description = request.data.get("description")
+
+        if not description:
+            return Response(
+                {"error": "Description is required for generating suggestions."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        # Generate AI email Template via Ollama
+        try:
+            template = self.generate_email_template(description)
+            return Response(
+                {
+                    "template": template,
+                },
+                status=status.HTTP_200_OK,
+            )
+
+        except Exception as e:
+            return Response(
+                {"error": f"Error generating content: {str(e)}"},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
+
+    def generate_email_template(self, description):
+        return self.generate_with_ollama(
+            "Generate an email template with only the following placeholders: Receiver Name: {first_name}. Only generate the email body; do not include the subject, salutation, or any other elements. Do not conclude with phrases like 'Best Regards.' Simply return the email body. Topic: "
+            + f"{description}"
+        )
+
+    def generate_with_ollama(self, prompt):
+        # Run the Ollama command in subprocess
+        try:
+            result = subprocess.run(
+                ["ollama", "run", "llama3.2", prompt],
+                capture_output=True,
+                text=True,
+                check=True,
+            )
+            return result.stdout.strip()
+        except subprocess.CalledProcessError as e:
+            raise Exception(f"Error running Ollama: {str(e)}")
+
+
+class AIGenerateEmailAttachmentView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        description = request.data.get("description")
+
+        if not description:
+            return Response(
+                {"error": "Description is required for generating suggestions."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        # Generate AI email Attachment via Ollama
+        try:
+            attachment_content = self.generate_email_attachment(description)
+
+            pdf_file = self.create_pdf(attachment_content, description)
+
+            return Response(
+                {
+                    "message": "PDF attachment generated successfully.",
+                    "attachment_url": pdf_file,
+                },
+                status=status.HTTP_200_OK,
+            )
+
+        except Exception as e:
+            return Response(
+                {"error": f"Error generating content: {str(e)}"},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
+
+    def generate_email_attachment(self, description):
+        ai_prompt = (
+            "Generate detailed content on the given topic. Please make sure the content is easy to understand, "
+            "informative, and well-structured. Start by providing an introduction to the topic, then break it down into "
+            "subtopics with clear explanations. Include examples, key points, and any relevant facts that will help the reader "
+            "understand the topic thoroughly. Aim to provide a comprehensive overview that will be useful for someone who is "
+            "new to this subject. "
+            f"Topic: {description}"
+        )
+        return self.generate_with_ollama(ai_prompt)
+
+    def generate_with_ollama(self, prompt):
+        # Run the Ollama command in subprocess
+        try:
+            result = subprocess.run(
+                ["ollama", "run", "llama3.2", prompt],
+                capture_output=True,
+                text=True,
+                check=True,
+            )
+            return result.stdout.strip()
+        except subprocess.CalledProcessError as e:
+            raise Exception(f"Error running Ollama: {str(e)}")
+
+    def create_pdf(self, content, description):
+        # Create a PDF in memory
+        buffer = BytesIO()
+        c = canvas.Canvas(buffer, pagesize=letter)
+
+        # Define margins in points (5 cm = 141.75 points)
+        margin = 141.75
+        top_margin = margin  # Top margin
+        bottom_margin = margin  # Bottom margin
+        left_margin = margin  # Left margin
+        right_margin = margin  # Right margin
+
+        # Set up basic content layout
+        width, height = letter
+        c.setFont("Helvetica", 12)
+
+        # Add Heading (centered at the top with margin)
+        heading = f"{description[:50]}"  
+        heading_width = c.stringWidth(heading, "Helvetica", 12)
+        c.drawString((width - heading_width) / 2, height - top_margin, heading)
+
+        # Adjust starting point for content below the heading (leave space for the heading)
+        y_position = height - top_margin - 20  # 20px space after heading
+
+        # Set up styles for text formatting and paragraph wrapping
+        style = getSampleStyleSheet()["Normal"]
+        style.fontName = "Helvetica"
+        style.fontSize = 10
+        style.leading = 12
+        style.alignment = 0  # Align text to the left
+
+        # Wrap the content text to fit within the page width (left to right margins)
+        max_width = width - left_margin - right_margin  # Calculate max width
+
+        # Create a paragraph object to handle line breaks and word wrapping
+        text_paragraph = Paragraph(content, style)
+
+        # Adjust wrap space for the content
+        text_paragraph.wrap(
+            max_width, height - top_margin - 40
+        )  # 40px space for heading and some margin
+        text_paragraph.drawOn(c, left_margin, y_position)
+
+        # Adjust y_position after the content is drawn
+        y_position -= text_paragraph.height
+
+        # Handle pagination if content exceeds one page
+        while y_position > bottom_margin and text_paragraph.height > 0:
+            # Check if we need to move to the next page
+            if y_position - text_paragraph.height < bottom_margin:
+                c.showPage()  # Start a new page
+                y_position = (
+                    height - top_margin - 20
+                )  # Reset Y position for the new page
+
+                # Add heading again on the new page
+                c.setFont("Helvetica", 12)
+                c.drawString((width - heading_width) / 2, height - top_margin, heading)
+
+                # Rewrap the content for the new page
+                text_paragraph.wrap(max_width, height - top_margin - 40)
+
+            # Draw the wrapped content for the current page
+            text_paragraph.drawOn(c, left_margin, y_position)
+            y_position -= (
+                text_paragraph.height
+            )  # Update the position for the next text block
+
+        c.showPage()
+        c.save()
+
+        # Save the PDF in memory and return the file path or response
+        buffer.seek(0)
+        file_name = description[0:20] + ".pdf"
+        pdf_dir = os.path.join(
+            settings.BASE_DIR, "ai_attachments"
+        )  
+
+        # Ensure the directory exists
+        if not os.path.exists(pdf_dir):
+            os.makedirs(pdf_dir)
+
+        pdf_file_path = os.path.join(pdf_dir, file_name)
+        with open(pdf_file_path, "wb") as f:
+            f.write(buffer.getvalue())
+
+        buffer.close()
+
+        # Return the file path (relative for front-end purposes)
+        return f"/ai_attachments/{file_name}"
+
+
+class PdfAttachmentsView(View):
+    def get(self, request, *args, **kwargs):
+        # Define the attachments folder path
+        attachments_folder = os.path.join(settings.BASE_DIR, "ai_attachments")
+
+        # Check if the attachments folder exists
+        if not os.path.exists(attachments_folder):
+            return JsonResponse(
+                {"pdf_files": [], "message": "Attachments folder not found."},
+                status=404,
+            )
+
+        # List all PDF files in the attachments folder with corrected URLs
+        pdf_files = [
+            {
+                "name": f,
+                "url": request.build_absolute_uri(
+                    f"/ai_attachments/{f}"  # Corrected URL path
+                ),
+            }
+            for f in os.listdir(attachments_folder)
+            if f.endswith(".pdf")
+        ]
+
+        # Return the list of files as a JSON response
+        return JsonResponse({"pdf_files": pdf_files})
+
+
 class UserTemplatesView(APIView):
     permission_classes = [IsAuthenticated]
 
@@ -403,10 +756,10 @@ class EmailStatusView(APIView):
 
         # Get the details of successful and failed emails
         success_list = successful_emails.values(
-            "recipient", "subject", "email_sent_date", "message"
+            "recipient", "subject", "email_sent_date", "message", "attachments"
         )
         fail_list = failed_emails.values(
-            "recipient", "subject", "email_sent_date", "message"
+            "recipient", "subject", "email_sent_date", "message", "attachments"
         )
 
         response_data = {
@@ -417,3 +770,35 @@ class EmailStatusView(APIView):
         }
 
         return Response(response_data, status=200)
+
+
+class SpeechToTextView(View):
+    def post(self, request):
+        print("REQUESTED")
+        if not request.FILES.get("audio"):
+            return JsonResponse({"error": "No audio file provided."}, status=400)
+
+        audio_file = request.FILES["audio"]
+
+        # Save audio file temporarily
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".webm") as temp_file:
+            for chunk in audio_file.chunks():
+                temp_file.write(chunk)
+            temp_file_path = temp_file.name
+
+        try:
+            # Transcribe the audio
+            segments, _ = model.transcribe(temp_file_path)
+            transcription = "".join([segment.text for segment in segments])
+
+            return JsonResponse({"transcription": transcription})
+
+        except Exception as e:
+            return JsonResponse(
+                {"error": f"Error during transcription: {str(e)}"}, status=500
+            )
+
+        finally:
+            # Clean up temporary file
+            if os.path.exists(temp_file_path):
+                os.remove(temp_file_path)

@@ -30,11 +30,14 @@
 <body>
     <div class="container centered-container" id="main-content">
         <!-- CSV upload form -->
+        <br>
         <div id="csv-form">
-            <h1>Select CSV File To Validate</h1>
+            <h1>Validate CSV File For Bulk Emails</h1>
+            <br><br><br>
             <form id="csv-upload-form" enctype="multipart/form-data">
-                <div class="mb-3">
-                    <input type="file" class="form-control" style="width: 300px;" id="csv-file" name="file" accept=".csv" required>
+                <div class="mb-3" >
+                    <label for="csv-file" class="form-label">Select CSV File To Validate</label>
+                    <input type="file" class="form-control" style="align-content: center;" id="csv-file" name="file" accept=".csv" required>
                 </div>
                 <button type="submit" class="btn btn-primary">Validate File</button>
             </form>

@@ -46,74 +46,109 @@
         
         // Function to send email
         async function sendEmail() {
-            const subject = document.getElementById("subject").value;
-            const message = document.getElementById("email-content").value;
-            const recipientList = document.getElementById("recipients").value.split(',').map(email => email.trim());
-            const responseMessageDiv = document.getElementById("response-message");
+    const subject = document.getElementById("subject").value;
+    const message = document.getElementById("email-content").value;
+    const recipientList = document.getElementById("recipients").value.split(',').map(email => email.trim());
+    const fileInput = document.getElementById("file-attachment"); // Get file input
+    const responseMessageDiv = document.getElementById("response-message");
 
-            if (!subject || !message || recipientList.length === 0) {
-                responseMessageDiv.style.display = 'block';
-                responseMessageDiv.innerHTML = ` 
-                    <div class="alert alert-danger">
-                        Subject, message, and recipient list are required.
-                    </div>
-                `;
-                return;
-            }
+    if (!subject || !message || recipientList.length === 0) {
+        responseMessageDiv.style.display = 'block';
+        responseMessageDiv.innerHTML = ` 
+            <div class="alert alert-danger">
+                Subject, message, and recipient list are required.
+            </div>
+        `;
+        return;
+    }
 
-            // Get CSRF token from the form
-            const csrfToken = getCsrfToken();
+    // Collect selected PDF attachments (checkboxes that are checked)
+    const pdfAttachments = document.querySelectorAll("#pdf-attachments input[type='checkbox']:checked");
+    const selectedPdfFiles = [];
+    pdfAttachments.forEach((checkbox) => {
+        // Log the selected checkbox to ensure the file name or URL is correct
+        console.log("Selected PDF: ", checkbox.value);
+        selectedPdfFiles.push(checkbox.value); // Assuming 'value' holds the file name or URL
+    });
 
-            try {
-                const response = await fetch("/api/users/send-email/", {
-                    method: "POST",
-                    headers: {
-                        "Content-Type": "application/json",
-                        "X-CSRFToken": csrfToken, 
-                    },
-                    body: JSON.stringify({
-                        subject: subject,
-                        message: message,
-                        recipient_list: recipientList
-                    }),
-                    credentials: "same-origin"  // Ensure cookies (for session auth) are included
-                });
+    // Prepare FormData for file attachments
+    const formData = new FormData();
+    formData.append("subject", subject);
+    formData.append("message", message);
+    formData.append("recipient_list", JSON.stringify(recipientList));
 
-                // Check if the response is a JSON response
-                const contentType = response.headers.get("Content-Type");
-                if (!contentType || !contentType.includes("application/json")) {
-                    const responseText = await response.text();  
-                    console.error("Non-JSON response received:", responseText);  
-                    throw new Error("Received non-JSON response from the server");
-                }
+    // Append regular file attachments (if any)
+    if (fileInput.files.length > 0) {
+        Array.from(fileInput.files).forEach(file => {
+            formData.append("attachments", file);
+        });
+    }
 
+    // Log the selected PDF files to ensure they are collected correctly
+    if (selectedPdfFiles.length > 0) {
+        console.log("PDF Attachments to be sent: ", selectedPdfFiles);
+    } else {
+        console.log("No PDF files selected.");
+    }
 
-                const data = await response.json();
+    // Append selected PDF attachments (if any)
+    selectedPdfFiles.forEach((fileName) => {
+        // Ensure file names are being appended correctly
+        formData.append('pdf_attachments', fileName);  // Sending the file name or URL depending on your setup
+    });
 
-                responseMessageDiv.style.display = 'block';
-                if (response.ok) {
-                    responseMessageDiv.innerHTML = ` 
-                        <div class="alert alert-success">
-                        Sent to: ${data.sent_to.join(', ')}<br>
-                        Not Sent to: ${data.not_sent_to.join(', ')}</div>
-                    `;
-                } else {
-                    responseMessageDiv.innerHTML = ` 
-                        <div class="alert alert-danger">
-                            Error: ${data.error || 'Failed to send emails.'}
-                        </div>
-                    `;
-                }
-            } catch (error) {
-                console.error("Error during fetch:", error);
-                responseMessageDiv.style.display = 'block';
-                responseMessageDiv.innerHTML = ` 
-                    <div class="alert alert-danger">
-                        An error occurred: ${error.message}
-                    </div>
-                `;
-            }
+    console.log("Final form data: ",formData)
+
+    // Get CSRF token from the form
+    const csrfToken = getCsrfToken();
+
+    try {
+        const response = await fetch("/api/users/send-email/", {
+            method: "POST",
+            headers: {
+                "X-CSRFToken": csrfToken, 
+            },
+            body: formData,
+            credentials: "same-origin"  // Ensure cookies (for session auth) are included
+        });
+
+        // Check if the response is a JSON response
+        const contentType = response.headers.get("Content-Type");
+        if (!contentType || !contentType.includes("application/json")) {
+            const responseText = await response.text();  
+            console.error("Non-JSON response received:", responseText);  
+            throw new Error("Received non-JSON response from the server");
         }
+
+        const data = await response.json();
+
+        responseMessageDiv.style.display = 'block';
+        if (response.ok) {
+            responseMessageDiv.innerHTML = ` 
+                <div class="alert alert-success">
+                    Sent to: ${data.sent_to.join(', ')}<br>
+                    Not Sent to: ${data.not_sent_to.join(', ')}
+                </div>
+            `;
+        } else {
+            responseMessageDiv.innerHTML = ` 
+                <div class="alert alert-danger">
+                    Error: ${data.error || 'Failed to send emails.'}
+                </div>
+            `;
+        }
+    } catch (error) {
+        console.error("Error during fetch:", error);
+        responseMessageDiv.style.display = 'block';
+        responseMessageDiv.innerHTML = ` 
+            <div class="alert alert-danger">
+                An error occurred: ${error.message}
+            </div>
+        `;
+    }
+}
+
+
         // Function to generate email content using AI
 async function generateEmailContent() {
     const aiInput = document.getElementById("ai-input").value;
@@ -252,7 +287,7 @@ async function generateEmailContent() {
                         credentials: "same-origin",
                     });
 
-                    const emailData = await emailResponse.json();
+                    const emailData = await emailResponse.text();
 
                     if (emailData.sent_to && emailData.sent_to.length > 0) {
                         sentEmails = sentEmails.concat(emailData.sent_to);
@@ -364,32 +399,197 @@ function insertTemplateContent(templateBody) {
     // Call the fetchTemplates function when the page loads
     window.onload = function() {
         fetchTemplates();
+        fetchPdfAttachments();
     };
     </script>
+
+<script>
+
+    // Speech TO Text 
+    let mediaRecorder;
+    let audioChunks = [];
+    let isRecording = false;
+
+    async function toggleRecording(field, buttonId) {
+        const button = document.getElementById(buttonId);
+
+    if (!isRecording) {
+        button.innerText = "Stop Voice Input";
+        button.style.backgroundColor = "red"; 
+        isRecording = true;
+
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        mediaRecorder = new MediaRecorder(stream);
+
+        mediaRecorder.ondataavailable = event => {
+            audioChunks.push(event.data);
+        };
+
+        mediaRecorder.onstop = async () => {
+            const audioBlob = new Blob(audioChunks, { type: 'audio/webm' });
+            audioChunks = [];
+
+            const formData = new FormData();
+            formData.append('audio', audioBlob);
+
+            const csrfToken = getCsrfToken();
+
+            const response = await fetch('/api/users/speech-to-text/', {
+                method: 'POST',
+                body: formData,
+                headers: {
+                    "X-CSRFToken": csrfToken,  // Add CSRF token to request headers
+                },
+                credentials: "same-origin" 
+            });
+
+            const data = await response.json();
+            if (response.ok) {
+                       field.value += data.transcription;  // Append transcribed text
+                
+            } else {
+                alert(data.error || 'Failed to transcribe audio.');
+            }
+        };
+
+        mediaRecorder.start();
+    } else {
+        button.innerText = "Start Voice Input";
+        button.style.backgroundColor = "blue"; 
+        isRecording = false;
+        mediaRecorder.stop();
+    }
+}// Fetch and display PDF files from the ai_attachments folder
+async function fetchPdfAttachments() {
+    const pdfContainer = document.getElementById("pdf-attachments");
+
+    try {
+        const response = await fetch("/api/users/get-pdf-attachments/");
+        const data = await response.json();
+
+        if (response.ok && data.pdf_files.length > 0) {
+            pdfContainer.innerHTML = ""; // Clear any existing content
+
+            data.pdf_files.forEach(file => {
+                const fileLabel = document.createElement("label");
+                fileLabel.classList.add("form-check-label");
+
+                const fileCheckbox = document.createElement("input");
+                fileCheckbox.type = "checkbox";
+                fileCheckbox.classList.add("form-check-input");
+                fileCheckbox.value = file.name; // Use the file name as the checkbox value
+                fileCheckbox.name = "pdfFiles";
+
+                const fileLink = document.createElement("a");
+                fileLink.href = file.url; // Use the URL provided in the response
+                fileLink.target = "_blank"; // Open in a new tab
+                fileLink.textContent = file.name; // Display the file name
+                fileLink.style.marginLeft = "10px"; // Optional styling for spacing
+
+                fileLabel.appendChild(fileCheckbox);
+                fileLabel.appendChild(fileLink);
+
+                const checkboxDiv = document.createElement("div");
+                checkboxDiv.classList.add("form-check");
+                checkboxDiv.appendChild(fileLabel);
+                pdfContainer.appendChild(checkboxDiv);
+            });
+        } else {
+            pdfContainer.innerHTML = `
+                <div class="alert alert-info">No AI Attachments Available.</div>
+            `;
+        }
+
+    } catch (error) {
+        console.error("Error fetching PDF attachments:", error);
+        pdfContainer.innerHTML = `
+            <div class="alert alert-danger">An error occurred while loading PDF files.</div>
+        `;
+    }
+}
+
+async function generateEmailAttachment() {
+    const aiInput = document.getElementById("ai-input").value;
+    const responseMessageDiv = document.getElementById("response-message");
+
+    if (!aiInput) {
+        alert("Topic is required!");
+        return;
+    }
+
+    try {
+        // Send POST request to the Django view
+        // Get CSRF token from the form
+        const csrfToken = getCsrfToken();
+
+        const response = await fetch("/api/users/ai-attachment/", {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json",
+                "X-CSRFToken": csrfToken,  
+            },
+            body: JSON.stringify({ description: aiInput }),
+            credentials: "same-origin"  // Ensure cookies (for session auth) are included
+        });
+        
+        const data = await response.json();
+
+        if (response.ok) {
+            // Success - Display a link to download the attachment or show a success message
+            fetchPdfAttachments()
+            const attachmentUrl = data.attachment_url;
+            alert("AI attachment generated successfully.");
+        } else {
+            // Handle error response
+            alert(data.error || "An error occurred while generating the AI attachment.");
+        }
+    } catch (error) {
+        console.error("Error generating AI attachment:", error);
+        alert("An error occurred while generating the AI attachment.");
+    }
+}
+
+
+</script>
     
 </head>
 <body>
     <div class="container mt-5">
-        <h1 class="text-center">Send Email</h1>
+        <h1 class="text-center">Email</h1>
         <div class="row">
             <div class="col-md-7">
-                <h3>Email Form</h3>
+                <h3>Compose An Email</h3>
                 <form id="email-form">
                     <div class="mb-3">
-                        <label for="recipients" class="form-label">Recipients (Separate by comma)</label>
-                        <input type="text" class="form-control" id="recipients" placeholder="Enter email recipients (comma separated)" required>
+                        <label for="recipients" class="form-label">Recipients (Separate by comma)</label> 
+                        <input type="text" class="form-control" id="recipients" placeholder="Enter email recipients (comma separated)" >
                     </div>
                     <div class="mb-3">
                         <label for="subject" class="form-label">Subject</label>
+                        <button style="padding-left: 5px; padding-right: 5px;padding-top: 3px; padding-bottom: 3px; font-size: 13px; border-radius: 5px; text-align: center;" class="btn btn-primary" id="subject-recording" onclick="toggleRecording(document.getElementById('subject'), this.id)">Start Voice Input</button>
                         <input type="text" class="form-control" id="subject" placeholder="Enter email subject" required>
                     </div>
                     <div class="mb-3">
                         <label for="email-content" class="form-label">Email Content</label>
+                        <button style="padding-left: 5px; padding-right: 5px;padding-top: 3px; padding-bottom: 3px; font-size: 13px; border-radius: 5px; text-align: center;" class="btn btn-primary" id="email-recording" onclick="toggleRecording(document.getElementById('email-content'), this.id)">Start Voice Input</button>
                         <textarea class="form-control" id="email-content" rows="6" placeholder="Enter email content" required></textarea>
+                    </div>
+                    <div class="mb-3">
+                        <label for="file-attachment" class="form-label">Attach Files</label>
+                        <input type="file" class="form-control" id="file-attachment" multiple>
+                    </div>
+                    <div class="mb-3">
+                        <label for="pdf-attachments" class="form-label">Share AI Generated Attachments</label>
+                        <div id="pdf-attachments">
+                            <!-- PDF files will be displayed here -->
+                        </div>
                     </div>
                     <button type="button" class="btn btn-primary" onclick="sendEmail()">Send Email</button>
                     <button type="button" class="btn btn-secondary" onclick="resetForm()">Clear</button>
-                    <button type="button" class="btn btn-warning" onclick="uploadAndProcessCSV()">Send Bulk Mail using CSV</button>
+                    <button type="button" class="btn btn-warning" onclick="uploadAndProcessCSV()">Select CSV & Send Bulk Mail</button>
+                    
+                    
+            
                 </form>
             </div>
 
@@ -397,15 +597,20 @@ function insertTemplateContent(templateBody) {
                 <h3>Generate Content Using AI</h3>
                 <div class="mb-3">
                     <label for="ai-input" class="form-label">Enter Input</label>
+                    <button style="padding-left: 5px; padding-right: 5px;padding-top: 3px; padding-bottom: 3px; font-size: 13px; border-radius: 5px; text-align: center;" class="btn btn-primary" id="voice-ai" onclick="toggleRecording(document.getElementById('ai-input'), this.id)">Start Voice Input</button>
+
                     <textarea class="form-control" id="ai-input" rows="6" placeholder="Enter your input for AI generation" required></textarea>
                 </div>
-                <button type="button" class="btn btn-success" onclick="generateEmailContent()">Generate Using AI</button>
+                <button type="button" class="btn btn-success" onclick="generateEmailContent()">Create Email Subject & Content</button>
+                <button type="button" class="btn btn-success" onclick="generateEmailAttachment()">Create Email Attachment</button>
+                
+
                 <div id="response-message" class="mt-4" style="display:none;"></div>
             </div>
         </div>
 
 <div class="mt-5">
-    <h3>Email Templates</h3>
+    <h3>Available Email Templates</h3>
     <div id="template-carousel" class="carousel slide" data-bs-ride="carousel">
         <div class="carousel-inner" id="carousel-templates">
             <!-- Template items will be inserted dynamically -->

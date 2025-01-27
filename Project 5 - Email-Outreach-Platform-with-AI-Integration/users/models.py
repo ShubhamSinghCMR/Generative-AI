@@ -1,9 +1,6 @@
 from django.conf import settings
-from django.contrib.auth.models import (
-    AbstractBaseUser,
-    BaseUserManager,
-    PermissionsMixin,
-)
+from django.contrib.auth.models import (AbstractBaseUser, BaseUserManager,
+                                        PermissionsMixin)
 from django.db import models
 
 
@@ -58,6 +55,7 @@ class EmailTrack(models.Model):
     email_sent_date = models.DateTimeField(auto_now_add=True)
     subject = models.CharField(max_length=255)
     message = models.TextField()
+    attachments = models.JSONField(default=list, blank=True)
 
     def __str__(self):
         return f"Email to {self.recipient} by {self.username} at {self.email_sent_date}"

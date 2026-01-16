@@ -1,2 +1,5 @@
-# Generative-AI
-A repository featuring diverse Generative AI projects, including chatbots, content generation tools, and creative AI models. Perfect for exploring innovative applications and practical deployments in AI.
+# Generative AI
+
+A collection of **Generative AI projects** exploring practical applications of large language models and modern AI systems. The repository includes projects such as chatbots, AI-powered utilities, API-based LLM access, and automation workflows.
+
+It serves as a hands-on space for experimenting with generative models, building intelligent applications, and exploring real-world AI use cases.
